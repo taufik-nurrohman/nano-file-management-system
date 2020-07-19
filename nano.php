@@ -7,7 +7,7 @@
 
 
 // Settings
-define('ROOT', "");
+define('ROOT', __DIR__ . '/root');
 define('READ_ONLY', true);
 
 
@@ -38,9 +38,18 @@ $the_view .= '</body>';
 $the_view .= '</html>';
 
 
+$is_file = is_file($the_path);
+$is_folder = is_dir($the_path);
+$is_read_only = !is_writable($the_path);
+
+$the_type = mime_content_type($the_path);
+
+$is_text = $the_type && (0 === strpos($the_type, 'text/') || 'image/svg+xml' === $the_type);
+
+
 if (!empty($_GET['css'])) {
     header('Content-Type: text/css');
-    // header('Cache-Control: ');
+    header('Cache-Control: max-age=2592000'); // 30 days
 echo <<<CSS
 
 * {
@@ -51,8 +60,17 @@ echo <<<CSS
   box-sizing: border-box;
 }
 
+a {
+  text-decoration: none;
+  color: #00f;
+}
+
+a:focus {
+  color: #f00;
+}
+
 html {
-  font: normal normal 13px/1.4 sans-serif;
+  font: normal normal 13px/1.6 sans-serif;
   background: #fff;
   color: #000;
 }
@@ -100,17 +118,51 @@ h5 {
   margin-top: 1rem;
 }
 
+p[ondrop] {
+  background: rgba(0, 0, 0, .05);
+  border: 1px dashed rgba(0, 0, 0, .25);
+  color: rgba(0, 0, 0, .5);
+  padding: 1em 1.5em;
+  border-radius: 1px;
+  cursor: pointer;
+}
+
+p[ondrop]:focus,
+p[ondrop]:hover,
+p[ondrop].over {
+  color: inherit;
+  border-color: rgba(0, 0, 0, .5);
+}
+
 table {
   width: 100%;
-  table-layout: fixed;
   border-collapse: collapse;
 }
 
 th, td {
-  border: 1px solid;
   text-align: left;
+  padding: 0 .5em;
   vertical-align: top;
-  padding: .25em .5em;
+}
+
+th {
+  border-bottom: 2px solid;
+}
+
+th:first-child,
+td:first-child {
+  padding-left: 0;
+}
+
+th:last-child,
+td:last-child {
+  padding-right: 0;
+}
+
+th + th,
+td + td {
+  width: 1px;
+  white-space: nowrap;
 }
 
 main {
@@ -120,9 +172,46 @@ main {
 CSS;
 } else if (!empty($_GET['js'])) {
     header('Content-Type: application/javascript');
-    // header('Cache-Control: ');
+    header('Cache-Control: max-age=2592000'); // 30 days
 echo <<<JS
 
+function doDrop(e) {
+    let view = e.currentTarget.firstChild,
+        items, names = [];
+    e.preventDefault();
+    if (items = e.dataTransfer.items) {
+        for (let i = 0, j = items.length; i < j; ++i) {
+            if ('file' !== items[i].kind) {
+                continue;
+            }
+            let file = items[i].getAsFile();
+            names.push(file.name);
+        }
+    } else if (items = e.dataTransfer.files) {
+        for (let i = 0, j = items.length; i < j; ++i) {
+            names.push(items[i].name);
+        }
+    }
+    if (names.length) {
+        view.innerHTML = names.join('<br>');
+    }
+    e.currentTarget.classList.remove('over');
+}
+
+function doOver(e) {
+    e.currentTarget.classList.add('over');
+    e.preventDefault();
+}
+
+function doEnd(e) {
+    e.currentTarget.classList.remove('over');
+}
+
+function doEnter(e) {}
+
+function doLeave(e) {
+    e.currentTarget.classList.remove('over');
+}
 
 JS;
 } else {
@@ -135,30 +224,37 @@ JS;
     $the_content .= '<footer>';
     $the_content .= '</footer>';
 
+    $d = dirname($r = $the_rules_parts[1] ?? "");
     if ('g' === $the_task) {
-        $the_table  = '<table>';
+        $the_table  = '<form action="nano.php" enctype="multipart/form-data" method="post">';
+        $the_table .= '<p ondragend="doEnd(event);" ondragenter="doEnter(event);" ondragleave="doLeave(event);" ondragover="doOver(event);" ondrop="doDrop(event);"><span>Drop files here&hellip;</span></p>';
+        $the_table .= '</form>';
+        $the_table .= '<table>';
         $the_table .= '<thead>';
         $the_table .= '<tr>';
         $the_table .= '<th>Name</th>';
-        $the_table .= '<th style="width:12em;" title="Date Create">Date</th>';
-        $the_table .= '<th style="width:4em;" title="File Permission">Mode</th>';
-        $the_table .= '<th colspan="2" style="width:8em;">Actions</th>';
+        $the_table .= '<th title="Date Create">Date</th>';
+        $the_table .= '<th title="File Permission">Mode</th>';
+        $the_table .= '<th></th>';
         $the_table .= '</tr>';
         $the_table .= '</thead>';
         $the_table .= '<tbody>';
-        foreach (glob($the_root . $the_s . '*') as $f) {
+        foreach (glob($the_path . $the_s . '*', GLOB_MARK) as $f) {
             $c = filectime($f);
+            $n = basename($f);
             $the_table .= '<tr>';
-            $the_table .= '<td><a href="">' . basename($f) . '</a></td>';
+            $the_table .= '<td>';
+            $the_table .= '/' === substr($f, -1) ? '<a href="nano.php?task=g:' . ($r ? $r . '/' . $n : $n) . '">' . $n . "\\</a>" : $n;
+            $the_table .= '</td>';
             $the_table .= '<td><time datetime="' . date('c', $c) . '">' . date('Y/m/d H:i:s', $c) . '</time></td>';
-            $the_table .= '<td>0600</td>';
-            $the_table .= '<td><a href="">Edit</a></td>';
-            $the_table .= '<td><a href="">Delete</a></td>';
+            $the_table .= '<td>' . substr(sprintf('%o', fileperms($f)), -4) . '</td>';
+            $the_table .= '<td><a href="nano.php?task=p:' . ($r ? $r . '/' . $n : $n) . '">Edit</a>&nbsp;<a href="nano.php?task=d:' . ($r ? $r . '/' . $n : $n) . '">Delete</a></td>';
             $the_table .= '</tr>';
         }
         $the_table .= '</tbody>';
         $the_table .= '</table>';
-        $the_content = sprintf($the_content, 'Index of /' . ($the_rules_parts[1] ?? ""), $the_table);
+        $p = $the_root !== $the_path ? '<a href="nano.php' . ($d && '.' !== $d ? '?task:' . $d : "") . '">..</a>' : '.';
+        $the_content = sprintf($the_content, 'Index of ' . $p . "\\" . strtr($r, [$the_s => "\\"]), $the_table);
     }
 
     $the_title = "";
