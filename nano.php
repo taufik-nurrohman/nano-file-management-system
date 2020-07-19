@@ -253,7 +253,7 @@ JS;
         }
         $the_table .= '</tbody>';
         $the_table .= '</table>';
-        $p = $the_root !== $the_path ? '<a href="nano.php' . ($d && '.' !== $d ? '?task:' . $d : "") . '">..</a>' : '.';
+        $p = $the_root !== $the_path ? '<a href="nano.php' . ($d && '.' !== $d ? '?task=g:' . $d : "") . '">..</a>' : '.';
         $the_content = sprintf($the_content, 'Index of ' . $p . "\\" . strtr($r, [$the_s => "\\"]), $the_table);
     }
 
